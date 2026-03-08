@@ -1,0 +1,3 @@
+# ComfyUI-CameraForensicRealism dependencies
+# numpy and torch are already provided by ComfyUI
+numpy>=1.24.0
