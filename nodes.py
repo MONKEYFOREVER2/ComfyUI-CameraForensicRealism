@@ -325,3 +325,140 @@ class CameraForensicRealismEngine:
 
         output = torch.stack(results, dim=0)
         return (output,)
+
+
+# ============================================================================
+# LUT Loader Node
+# ============================================================================
+
+class LUTLoader:
+    """
+    LUT Loader — Load .cube 3D LUT files.
+    Scans the bundled luts/ folder and presents a dropdown selector.
+    """
+
+    LUTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "luts")
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def _get_lut_list(cls):
+        """Discover all .cube files in the luts/ directory."""
+        luts_dir = cls.LUTS_DIR
+        if not os.path.isdir(luts_dir):
+            return ["No LUTs found"]
+        files = [f for f in os.listdir(luts_dir)
+                 if f.lower().endswith('.cube') and os.path.isfile(os.path.join(luts_dir, f))]
+        files.sort()
+        return files if files else ["No LUTs found"]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        lut_files = cls._get_lut_list()
+        return {
+            "required": {
+                "lut_name": (lut_files, {
+                    "tooltip": "Select a .cube LUT file from the bundled luts/ folder"
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("LUT_DATA",)
+    RETURN_NAMES = ("lut_data",)
+    FUNCTION = "load_lut"
+    CATEGORY = "image/forensic"
+
+    DESCRIPTION = (
+        "LUT Loader\n\n"
+        "Loads a .cube 3D LUT file from the bundled luts/ folder.\n"
+        "Connect the output to a LUT Apply node.\n\n"
+        "Bundled LUT: iPhone 15 Pro Standard — baked from the\n"
+        "Camera Forensic Realism Engine's color science pipeline."
+    )
+
+    def load_lut(self, lut_name: str):
+        """Load and parse the selected .cube LUT file."""
+        from lut_engine import parse_cube_file
+
+        filepath = os.path.join(self.LUTS_DIR, lut_name)
+
+        if not os.path.isfile(filepath):
+            raise FileNotFoundError(f"LUT file not found: {filepath}")
+
+        lut, domain_min, domain_max = parse_cube_file(filepath)
+
+        lut_data = {
+            "lut": lut,
+            "domain_min": domain_min,
+            "domain_max": domain_max,
+            "name": lut_name,
+            "path": filepath,
+        }
+
+        print(f"🎨 LUT Loader: Loaded '{lut_name}' ({lut.shape[0]}³ grid)")
+        return (lut_data,)
+
+
+# ============================================================================
+# LUT Apply Node
+# ============================================================================
+
+class LUTApply:
+    """
+    LUT Apply — Apply a loaded 3D LUT to an image with adjustable strength.
+    """
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "lut_data": ("LUT_DATA",),
+                "strength": ("FLOAT", {
+                    "default": 0.85, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "LUT intensity. 0.0 = original, 1.0 = full LUT effect. 0.85 recommended."
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "apply_lut"
+    CATEGORY = "image/forensic"
+
+    DESCRIPTION = (
+        "LUT Apply\n\n"
+        "Applies a 3D LUT (from LUT Loader) to your image using\n"
+        "trilinear interpolation for smooth, accurate color grading.\n\n"
+        "Strength controls the blend between original and LUT-graded.\n"
+        "0.85 = recommended for natural iPhone look."
+    )
+
+    def apply_lut(self, image: torch.Tensor, lut_data: dict, strength: float):
+        """Apply the loaded LUT to each image in the batch."""
+        from lut_engine import apply_lut_with_strength
+
+        lut = lut_data["lut"]
+        domain_min = lut_data["domain_min"]
+        domain_max = lut_data["domain_max"]
+        lut_name = lut_data.get("name", "Unknown")
+
+        batch_size = image.shape[0]
+        results = []
+
+        for i in range(batch_size):
+            img_np = image[i].cpu().numpy().astype(np.float32)
+            img_np = np.clip(img_np, 0.0, 1.0)
+
+            processed = apply_lut_with_strength(img_np, lut, domain_min, domain_max, strength)
+            results.append(torch.from_numpy(processed))
+
+        output = torch.stack(results, dim=0)
+        print(f"🎨 LUT Apply: Applied '{lut_name}' at {strength:.0%} strength")
+        return (output,)
+

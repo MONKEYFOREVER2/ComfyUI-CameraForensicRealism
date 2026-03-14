@@ -144,6 +144,7 @@ def test_node():
         color_saturation=0.3, color_warmth=0.3,
         enable_local_tone=True, local_tone_strength=0.35, detail_boost=0.4,
         enable_skin_rendering=True, skin_strength=0.5, skin_warmth=0.4,
+        enable_deep_fusion=True, fusion_strength=0.6, fusion_texture_freq=0.5,
         enable_white_balance=True, wb_strength=0.5, wb_temperature=0.25, wb_tint=0.0,
         enable_color_grading=True, blue_shadows=0.4, warm_highlights=0.3,
         enable_sharpening=True, sharpen_strength=0.3,
@@ -168,12 +169,93 @@ def test_js_exists():
         return False
 
 
+def test_lut_parse():
+    print("\n--- Test 11: LUT Parse ---")
+    from lut_engine import parse_cube_file
+    lut_path = os.path.join(os.path.dirname(__file__), "luts", "iPhone_15_Pro_Standard.cube")
+    if not os.path.exists(lut_path):
+        print(f"  [FAIL] LUT file missing: {lut_path}"); return False
+    lut, dmin, dmax = parse_cube_file(lut_path)
+    ok = True
+    if lut.shape != (33, 33, 33, 3):
+        print(f"  [FAIL] Shape: {lut.shape}"); ok = False
+    if lut.min() < 0 or lut.max() > 1:
+        print(f"  [FAIL] Range: [{lut.min():.4f}, {lut.max():.4f}]"); ok = False
+    if np.any(np.isnan(lut)):
+        print(f"  [FAIL] NaN in LUT"); ok = False
+    if ok: print(f"  [PASS] LUT parsed: {lut.shape}, range [{lut.min():.4f}, {lut.max():.4f}]")
+    return ok
+
+
+def test_lut_apply():
+    print("\n--- Test 12: LUT Apply ---")
+    from lut_engine import parse_cube_file, apply_lut_3d
+    lut_path = os.path.join(os.path.dirname(__file__), "luts", "iPhone_15_Pro_Standard.cube")
+    lut, dmin, dmax = parse_cube_file(lut_path)
+    img = make_test_image()
+    result = apply_lut_3d(img, lut, dmin, dmax)
+    ok = check(result, img.shape, "LUT apply")
+    diff = np.mean(np.abs(result - img))
+    if diff < 1e-6:
+        print(f"  [FAIL] LUT had no effect (diff={diff:.6f})"); ok = False
+    else:
+        print(f"  [PASS] LUT modified image (mean diff={diff:.4f})")
+    return ok
+
+
+def test_lut_strength():
+    print("\n--- Test 13: LUT Strength ---")
+    from lut_engine import parse_cube_file, apply_lut_with_strength
+    lut_path = os.path.join(os.path.dirname(__file__), "luts", "iPhone_15_Pro_Standard.cube")
+    lut, dmin, dmax = parse_cube_file(lut_path)
+    img = make_test_image()
+    ok = True
+    # Strength 0 = original
+    r0 = apply_lut_with_strength(img, lut, dmin, dmax, 0.0)
+    diff0 = np.max(np.abs(r0 - img))
+    if diff0 > 1e-6:
+        print(f"  [FAIL] Strength 0 changed image (max diff={diff0:.6f})"); ok = False
+    else:
+        print(f"  [PASS] Strength 0.0 = original")
+    # Strength 0.5 = blend
+    r05 = apply_lut_with_strength(img, lut, dmin, dmax, 0.5)
+    r10 = apply_lut_with_strength(img, lut, dmin, dmax, 1.0)
+    diff05 = np.mean(np.abs(r05 - img))
+    diff10 = np.mean(np.abs(r10 - img))
+    if diff05 < diff10:
+        print(f"  [PASS] Strength 0.5 ({diff05:.4f}) < 1.0 ({diff10:.4f})")
+    else:
+        print(f"  [FAIL] Strength scaling broken"); ok = False
+    return ok
+
+
+def test_lut_nodes():
+    print("\n--- Test 14: LUT Nodes ---")
+    from nodes import LUTLoader, LUTApply
+    ok = True
+    # LUTLoader
+    loader_inputs = LUTLoader.INPUT_TYPES()["required"]
+    if "lut_name" in loader_inputs:
+        print(f"  [PASS] LUTLoader has 'lut_name' input")
+    else:
+        print(f"  [FAIL] LUTLoader missing 'lut_name'"); ok = False
+    # LUTApply
+    apply_inputs = LUTApply.INPUT_TYPES()["required"]
+    for name in ["image", "lut_data", "strength"]:
+        if name in apply_inputs:
+            print(f"  [PASS] LUTApply has '{name}' input")
+        else:
+            print(f"  [FAIL] LUTApply missing '{name}'"); ok = False
+    return ok
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("Camera Forensic Realism Engine v3 - Test Suite")
     print("=" * 60)
     tests = [test_tone, test_p3, test_local, test_skin, test_blue_shadows,
-             test_warm_highlights, test_wb, test_pipeline, test_node, test_js_exists]
+             test_warm_highlights, test_wb, test_pipeline, test_node, test_js_exists,
+             test_lut_parse, test_lut_apply, test_lut_strength, test_lut_nodes]
     results = []
     for t in tests:
         try: results.append(t())
@@ -186,3 +268,4 @@ if __name__ == "__main__":
     print(f"Results: {p}/{len(results)} tests passed")
     print("ALL PASSED!" if p == len(results) else "Some failed")
     print("=" * 60)
+

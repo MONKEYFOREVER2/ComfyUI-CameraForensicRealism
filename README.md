@@ -170,6 +170,42 @@ Once installed, find the node in the ComfyUI menu:
 
 ---
 
+## 🎨 LUT Color Grading (NEW)
+
+This pack includes two dedicated LUT nodes for applying `.cube` 3D LUTs — plus a bundled **iPhone 15 Pro Standard** LUT baked from our color science pipeline.
+
+### LUT Workflow
+
+```
+[🎨 LUT Loader] → [🎨 LUT Apply] → [SaveImage]
+                        ↑
+                    [Your Image]
+```
+
+### 🎨 LUT Loader
+
+| Parameter | Description |
+|-----------|-------------|
+| `lut_name` | Dropdown of `.cube` files from the bundled `luts/` folder |
+
+**Output:** `LUT_DATA` — connect to LUT Apply
+
+### 🎨 LUT Apply
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `image` | — | Your image input |
+| `lut_data` | — | Connect from LUT Loader |
+| `strength` | `0.85` | LUT intensity (0.0 = original, 1.0 = full effect) |
+
+**Output:** `IMAGE`
+
+### Adding Custom LUTs
+
+Drop any `.cube` 3D LUT file into the `luts/` folder inside this node pack and restart ComfyUI. It will appear in the LUT Loader dropdown automatically.
+
+---
+
 ## 📋 Requirements
 
 - **ComfyUI** (latest version recommended)
@@ -181,7 +217,7 @@ Once installed, find the node in the ComfyUI menu:
 
 ## 🤝 Contributing
 
-Pull requests are welcome! If you'd like to add new camera profiles or improve the processing pipeline, feel free to open an issue or PR.
+Pull requests are welcome! If you'd like to add new camera profiles, custom LUTs, or improve the processing pipeline, feel free to open an issue or PR.
 
 ## 📄 License
 
