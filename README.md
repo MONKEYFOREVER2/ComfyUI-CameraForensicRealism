@@ -172,7 +172,7 @@ Once installed, find the node in the ComfyUI menu:
 
 ## 🎨 LUT Color Grading (NEW)
 
-This pack includes two dedicated LUT nodes for applying `.cube` 3D LUTs — plus a bundled **iPhone 15 Pro Standard** LUT baked from our color science pipeline.
+This pack includes two dedicated LUT nodes for applying `.cube` 3D LUTs — plus a bundled **Apple Log to Rec.709** official LUT for precise color conversion.
 
 ### LUT Workflow
 

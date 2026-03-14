@@ -172,7 +172,7 @@ def test_js_exists():
 def test_lut_parse():
     print("\n--- Test 11: LUT Parse ---")
     from lut_engine import parse_cube_file
-    lut_path = os.path.join(os.path.dirname(__file__), "luts", "iPhone_15_Pro_Standard.cube")
+    lut_path = os.path.join(os.path.dirname(__file__), "luts", "AppleLog2_to_Rec709_33_Grid.cube")
     if not os.path.exists(lut_path):
         print(f"  [FAIL] LUT file missing: {lut_path}"); return False
     lut, dmin, dmax = parse_cube_file(lut_path)
@@ -190,7 +190,7 @@ def test_lut_parse():
 def test_lut_apply():
     print("\n--- Test 12: LUT Apply ---")
     from lut_engine import parse_cube_file, apply_lut_3d
-    lut_path = os.path.join(os.path.dirname(__file__), "luts", "iPhone_15_Pro_Standard.cube")
+    lut_path = os.path.join(os.path.dirname(__file__), "luts", "AppleLog2_to_Rec709_33_Grid.cube")
     lut, dmin, dmax = parse_cube_file(lut_path)
     img = make_test_image()
     result = apply_lut_3d(img, lut, dmin, dmax)
@@ -206,7 +206,7 @@ def test_lut_apply():
 def test_lut_strength():
     print("\n--- Test 13: LUT Strength ---")
     from lut_engine import parse_cube_file, apply_lut_with_strength
-    lut_path = os.path.join(os.path.dirname(__file__), "luts", "iPhone_15_Pro_Standard.cube")
+    lut_path = os.path.join(os.path.dirname(__file__), "luts", "AppleLog2_to_Rec709_33_Grid.cube")
     lut, dmin, dmax = parse_cube_file(lut_path)
     img = make_test_image()
     ok = True
