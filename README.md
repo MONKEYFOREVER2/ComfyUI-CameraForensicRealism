@@ -174,6 +174,10 @@ Once installed, find the node in the ComfyUI menu:
 
 This pack includes two dedicated LUT nodes for applying `.cube` 3D LUTs — plus a bundled **Apple Log to Rec.709** official LUT for precise color conversion.
 
+### Recommended settings.
+
+I recommend setting the strength to around 0.05 to 0.10
+
 ### LUT Workflow
 
 ```
