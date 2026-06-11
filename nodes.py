@@ -1,26 +1,25 @@
 """
-Camera Forensic Realism Engine - ComfyUI Node Definition v3
-iPhone ISP color science with blue shadow tint + custom themed UI.
+Camera Forensic Realism Engine - ComfyUI Node Definition v4
+iPhone 17 ISP color science + Photographic Styles + custom themed UI.
 """
 
 import numpy as np
 import torch
-import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from forensic_engine import process_iphone_realism
+try:
+    from .forensic_engine import process_iphone_realism, PHOTOGRAPHIC_STYLES
+    from .lut_engine import parse_cube_file, apply_lut_with_strength
+except ImportError:
+    from forensic_engine import process_iphone_realism, PHOTOGRAPHIC_STYLES
+    from lut_engine import parse_cube_file, apply_lut_with_strength
 
 
 class CameraForensicRealismEngine:
     """
     Camera Forensic Realism Engine
-    Makes AI images look like iPhone 15 Pro photos.
+    Makes AI images look like iPhone 17 photos — honest color science only.
     """
-
-    def __init__(self):
-        pass
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -29,196 +28,135 @@ class CameraForensicRealismEngine:
                 "image": ("IMAGE",),
 
                 # ===================== MASTER =====================
+                "photographic_style": (list(PHOTOGRAPHIC_STYLES.keys()), {
+                    "default": "Standard",
+                    "tooltip": "iPhone 17 Photographic Style. Undertones (Amber/Gold/Rose Gold/Cool Rose/Neutral) steer warmth; moods (Vibrant/Natural/Luminous/Dramatic/Quiet/Cozy/Ethereal/B&W) steer tone+color. Applied as offsets on top of your sliders."
+                }),
                 "master_strength": ("FLOAT", {
-                    "default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "default": 0.85, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "MASTER CONTROL - Scales all effects. 0.6-0.8 recommended."
+                    "tooltip": "Final blend between original and processed image. One honest mix control — per-stage sliders are absolute."
                 }),
                 "seed": ("INT", {
                     "default": 0, "min": 0, "max": 0xFFFFFFFF,
-                    "tooltip": "Random seed for noise reproducibility"
-                }),
-
-                # ===================== TONE MAPPING =====================
-                "enable_tone_mapping": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "TONE CURVE: ON",
-                    "label_off": "TONE CURVE: OFF",
-                    "tooltip": "iPhone S-curve: lifts shadows, compresses highlights, punchy mids"
-                }),
-                "tone_strength": ("FLOAT", {
-                    "default": 0.6, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "How much tone curve to apply. 0.5-0.7 = natural iPhone"
-                }),
-                "highlight_rolloff": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Smooth highlight compression - prevents blown-out whites"
-                }),
-                "shadow_lift": ("FLOAT", {
-                    "default": 0.4, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Raises black level - iPhone never crushes pure black"
-                }),
-                "contrast": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Mid-tone contrast punch"
-                }),
-
-                # ===================== P3 COLOR =====================
-                "enable_p3_color": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "P3 COLOR: ON",
-                    "label_off": "P3 COLOR: OFF",
-                    "tooltip": "Display P3 gamut - richer reds/greens via CIE XYZ transform"
-                }),
-                "color_strength": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "P3 color rendering intensity"
-                }),
-                "color_saturation": ("FLOAT", {
-                    "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Wider gamut saturation boost - keep low for realism"
-                }),
-                "color_warmth": ("FLOAT", {
-                    "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Apple warm color bias - signature iPhone warmth"
-                }),
-
-                # ===================== SMART HDR =====================
-                "enable_local_tone": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "SMART HDR: ON",
-                    "label_off": "SMART HDR: OFF",
-                    "tooltip": "Local contrast like Apple's multi-frame HDR fusion"
-                }),
-                "local_tone_strength": ("FLOAT", {
-                    "default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Local contrast/HDR intensity"
-                }),
-                "detail_boost": ("FLOAT", {
-                    "default": 0.4, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Micro-detail enhancement - texture pop"
-                }),
-
-                # ===================== SKIN =====================
-                "enable_skin_rendering": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "REAL TONE: ON",
-                    "label_off": "REAL TONE: OFF",
-                    "tooltip": "Apple Real Tone - warm natural skin, prevents orange"
-                }),
-                "skin_strength": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Skin rendering intensity"
-                }),
-                "skin_warmth": ("FLOAT", {
-                    "default": 0.4, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Skin warmth - natural glow without oversaturation"
-                }),
-
-                # ===================== DEEP FUSION =====================
-                "enable_deep_fusion": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "DEEP FUSION: ON",
-                    "label_off": "DEEP FUSION: OFF",
-                    "tooltip": "Isolate and crunch high-frequency textures (fabric, pores) without halos."
-                }),
-                "fusion_strength": ("FLOAT", {
-                    "default": 0.6, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Texture amplification strength (the iPhone computational crunch)."
-                }),
-                "fusion_texture_freq": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Determines which texture thicknesses are crunched."
+                    "tooltip": "Random seed for grain reproducibility"
                 }),
 
                 # ===================== WHITE BALANCE =====================
                 "enable_white_balance": ("BOOLEAN", {
                     "default": True,
-                    "label_on": "WHITE BAL: ON",
-                    "label_off": "WHITE BAL: OFF",
-                    "tooltip": "iPhone AWB - warm daylight bias"
-                }),
-                "wb_strength": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "White balance correction strength"
+                    "label_on": "WHITE BAL: ON", "label_off": "WHITE BAL: OFF",
+                    "tooltip": "Channel gains in linear light, luminance-preserving (warming doesn't brighten)"
                 }),
                 "wb_temperature": ("FLOAT", {
-                    "default": 0.25, "min": -1.0, "max": 1.0, "step": 0.01,
+                    "default": 0.12, "min": -1.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Cool(blue) <----> Warm(orange). iPhone = ~0.2-0.3"
+                    "tooltip": "Cool (blue) <----> Warm (orange). iPhone AWB sits slightly warm: ~0.1-0.15"
                 }),
                 "wb_tint": ("FLOAT", {
                     "default": 0.0, "min": -1.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Green <----> Magenta tint. 0 = neutral"
+                    "tooltip": "Green <----> Magenta. 0 = neutral"
                 }),
 
-                # ===================== COLOR GRADING =====================
-                "enable_color_grading": ("BOOLEAN", {
+                # ===================== GLOBAL TONE =====================
+                "enable_tone": ("BOOLEAN", {
                     "default": True,
-                    "label_on": "COLOR GRADE: ON",
-                    "label_off": "COLOR GRADE: OFF",
-                    "tooltip": "iPhone signature: blue-tinted blacks + warm golden highlights"
+                    "label_on": "TONE: ON", "label_off": "TONE: OFF",
+                    "tooltip": "Linear-light tone: exposure, shadow lift, midtone contrast, filmic highlight rolloff"
                 }),
-                "blue_shadows": ("FLOAT", {
+                "exposure": ("FLOAT", {
+                    "default": 0.05, "min": -1.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Exposure in EV. iPhone meters slightly bright: ~0.05"
+                }),
+                "contrast": ("FLOAT", {
+                    "default": 0.15, "min": -1.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Midtone contrast around the 0.18 photographic pivot. iPhone punch ~0.15"
+                }),
+                "shadows": ("FLOAT", {
+                    "default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Luminance-masked shadow lift + tiny black-point lift. iPhone never crushes blacks"
+                }),
+                "highlights": ("FLOAT", {
+                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Reinhard soft-knee highlight rolloff — smooth, monotonic, never blows out"
+                }),
+
+                # ===================== SMART HDR =====================
+                "enable_smart_hdr": ("BOOLEAN", {
+                    "default": True,
+                    "label_on": "SMART HDR: ON", "label_off": "SMART HDR: OFF",
+                    "tooltip": "Local tone mapping in log-luminance: compresses the base layer, keeps detail. Like Smart HDR 5 fusion"
+                }),
+                "hdr_strength": ("FLOAT", {
+                    "default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "How much local dynamic range compression (shadows up, highlights down — locally)"
+                }),
+
+                # ===================== COLOR SCIENCE =====================
+                "enable_color": ("BOOLEAN", {
+                    "default": True,
+                    "label_on": "COLOR: ON", "label_off": "COLOR: OFF",
+                    "tooltip": "Oklab color rendering: hue-preserving vibrance, skin protection, iPhone split-tone"
+                }),
+                "vibrance": ("FLOAT", {
                     "default": 0.4, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Blue tint in dark areas - the iPhone blue-black look"
+                    "tooltip": "Smart saturation: boosts muted colors more, leaves saturated ones alone. Hue-preserving (Oklab)"
                 }),
-                "warm_highlights": ("FLOAT", {
-                    "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01,
+                "skin_protection": ("FLOAT", {
+                    "default": 0.7, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Golden warmth in bright areas - complements blue shadows"
+                    "tooltip": "Real skin mask (Oklab hue ~50°) that shields skin from vibrance and caps skin chroma — no orange faces"
                 }),
-
-                # ===================== SHARPENING =====================
-                "enable_sharpening": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "ISP SHARP: ON",
-                    "label_off": "ISP SHARP: OFF",
-                    "tooltip": "Apple-style luminance sharpening - crisp not crunchy"
-                }),
-                "sharpen_strength": ("FLOAT", {
-                    "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01,
-                    "display": "slider",
-                    "tooltip": "Sharpening intensity"
-                }),
-
-                # ===================== SENSOR =====================
-                "enable_sensor": ("BOOLEAN", {
-                    "default": True,
-                    "label_on": "SENSOR FX: ON",
-                    "label_off": "SENSOR FX: OFF",
-                    "tooltip": "Subtle luminance noise + lens vignette"
-                }),
-                "sensor_strength": ("FLOAT", {
+                "shadow_tint": ("FLOAT", {
                     "default": 0.25, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Overall sensor effect intensity"
+                    "tooltip": "Cool/blue tint in shadows — the subtle iPhone blue-black signature"
                 }),
-                "sensor_noise": ("FLOAT", {
-                    "default": 0.3, "min": 0.0, "max": 1.0, "step": 0.01,
+                "highlight_warmth": ("FLOAT", {
+                    "default": 0.2, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Luminance noise - very subtle on iPhone"
+                    "tooltip": "Golden warmth in highlights — complements the cool shadows"
                 }),
-                "sensor_vignette": ("FLOAT", {
-                    "default": 0.4, "min": 0.0, "max": 1.0, "step": 0.01,
+
+                # ===================== DETAIL =====================
+                "enable_detail": ("BOOLEAN", {
+                    "default": True,
+                    "label_on": "DETAIL: ON", "label_off": "DETAIL: OFF",
+                    "tooltip": "Single coherent detail stage: fine texture + mid clarity, halo-suppressed, luminance-only"
+                }),
+                "texture": ("FLOAT", {
+                    "default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "Lens vignette - f/1.78 falloff"
+                    "tooltip": "Fine-scale detail (~1px): pores, fabric, hair. The 'computational crunch'"
+                }),
+                "clarity": ("FLOAT", {
+                    "default": 0.2, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Mid-scale local punch (~2% of frame). Keep low for natural look"
+                }),
+
+                # ===================== OPTICS & SENSOR =====================
+                "enable_optics": ("BOOLEAN", {
+                    "default": True,
+                    "label_on": "OPTICS: ON", "label_off": "OPTICS: OFF",
+                    "tooltip": "Lens vignette (linear light) + photon-weighted sensor grain"
+                }),
+                "grain": ("FLOAT", {
+                    "default": 0.2, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Sensor noise, stronger in shadows like a real sensor. iPhone base ISO ~0.15-0.25"
+                }),
+                "vignette": ("FLOAT", {
+                    "default": 0.25, "min": 0.0, "max": 1.0, "step": 0.01,
+                    "display": "slider",
+                    "tooltip": "Natural 1/(1+kr²)² illumination falloff applied in linear light. iPhone is well-corrected: keep low"
                 }),
             },
         }
@@ -229,52 +167,42 @@ class CameraForensicRealismEngine:
     CATEGORY = "image/forensic"
 
     DESCRIPTION = (
-        "Camera Forensic Realism Engine v3\n\n"
-        "iPhone 15 Pro ISP emulation:\n"
-        "- S-curve tone mapping (filmic highlight rolloff)\n"
-        "- Display P3 color (CIE XYZ gamut transform)\n"
-        "- Smart HDR local tone mapping\n"
-        "- Real Tone skin rendering\n"
-        "- Deep Fusion edge-preserving texture crunch\n"
-        "- Blue shadow tint (iPhone blue-black look)\n"
-        "- Warm golden highlights\n"
-        "- ISP sharpening + subtle sensor FX"
+        "Camera Forensic Realism Engine v4\n\n"
+        "iPhone 17 ISP emulation — honest color science:\n"
+        "- White balance in linear light (luminance-preserving)\n"
+        "- Filmic global tone (0.18 pivot, Reinhard rolloff)\n"
+        "- Smart HDR local tone mapping (log-luminance base/detail)\n"
+        "- Oklab color rendering (vibrance, skin protection, split-tone)\n"
+        "- Two-scale halo-suppressed detail\n"
+        "- Linear-light vignette + photon-weighted grain\n"
+        "- 14 iPhone 17 Photographic Styles presets"
     )
 
     def apply_iphone_realism(self, image: torch.Tensor,
-                              master_strength: float,
-                              seed: int,
-                              enable_tone_mapping: bool,
-                              tone_strength: float,
-                              highlight_rolloff: float,
-                              shadow_lift: float,
-                              contrast: float,
-                              enable_p3_color: bool,
-                              color_strength: float,
-                              color_saturation: float,
-                              color_warmth: float,
-                              enable_local_tone: bool,
-                              local_tone_strength: float,
-                              detail_boost: float,
-                              enable_skin_rendering: bool,
-                              skin_strength: float,
-                              skin_warmth: float,
-                              enable_deep_fusion: bool,
-                              fusion_strength: float,
-                              fusion_texture_freq: float,
-                              enable_white_balance: bool,
-                              wb_strength: float,
-                              wb_temperature: float,
-                              wb_tint: float,
-                              enable_color_grading: bool,
-                              blue_shadows: float,
-                              warm_highlights: float,
-                              enable_sharpening: bool,
-                              sharpen_strength: float,
-                              enable_sensor: bool,
-                              sensor_strength: float,
-                              sensor_noise: float,
-                              sensor_vignette: float):
+                             photographic_style: str,
+                             master_strength: float,
+                             seed: int,
+                             enable_white_balance: bool,
+                             wb_temperature: float,
+                             wb_tint: float,
+                             enable_tone: bool,
+                             exposure: float,
+                             contrast: float,
+                             shadows: float,
+                             highlights: float,
+                             enable_smart_hdr: bool,
+                             hdr_strength: float,
+                             enable_color: bool,
+                             vibrance: float,
+                             skin_protection: float,
+                             shadow_tint: float,
+                             highlight_warmth: float,
+                             enable_detail: bool,
+                             texture: float,
+                             clarity: float,
+                             enable_optics: bool,
+                             grain: float,
+                             vignette: float):
         """Main processing function."""
 
         batch_size = image.shape[0]
@@ -282,43 +210,33 @@ class CameraForensicRealismEngine:
 
         for i in range(batch_size):
             img_np = image[i].cpu().numpy().astype(np.float32)
-            img_np = np.clip(img_np, 0.0, 1.0)
 
             processed = process_iphone_realism(
                 image=img_np,
+                photographic_style=photographic_style,
                 master_strength=master_strength,
-                enable_tone_mapping=enable_tone_mapping,
-                tone_strength=tone_strength,
-                highlight_rolloff=highlight_rolloff,
-                shadow_lift=shadow_lift,
-                contrast=contrast,
-                enable_p3_color=enable_p3_color,
-                color_strength=color_strength,
-                color_saturation=color_saturation,
-                color_warmth=color_warmth,
-                enable_local_tone=enable_local_tone,
-                local_tone_strength=local_tone_strength,
-                detail_boost=detail_boost,
-                enable_skin_rendering=enable_skin_rendering,
-                skin_strength=skin_strength,
-                skin_warmth=skin_warmth,
-                enable_deep_fusion=enable_deep_fusion,
-                fusion_strength=fusion_strength,
-                fusion_texture_freq=fusion_texture_freq,
+                seed=seed + i,
                 enable_white_balance=enable_white_balance,
-                wb_strength=wb_strength,
                 wb_temperature=wb_temperature,
                 wb_tint=wb_tint,
-                enable_color_grading=enable_color_grading,
-                blue_shadows=blue_shadows,
-                warm_highlights=warm_highlights,
-                enable_sharpening=enable_sharpening,
-                sharpen_strength=sharpen_strength,
-                enable_sensor=enable_sensor,
-                sensor_strength=sensor_strength,
-                sensor_noise=sensor_noise,
-                sensor_vignette=sensor_vignette,
-                seed=seed + i,
+                enable_tone=enable_tone,
+                exposure=exposure,
+                contrast=contrast,
+                shadows=shadows,
+                highlights=highlights,
+                enable_smart_hdr=enable_smart_hdr,
+                hdr_strength=hdr_strength,
+                enable_color=enable_color,
+                vibrance=vibrance,
+                skin_protection=skin_protection,
+                shadow_tint=shadow_tint,
+                highlight_warmth=highlight_warmth,
+                enable_detail=enable_detail,
+                texture=texture,
+                clarity=clarity,
+                enable_optics=enable_optics,
+                grain=grain,
+                vignette=vignette,
             )
 
             results.append(torch.from_numpy(processed))
@@ -339,9 +257,6 @@ class LUTLoader:
 
     LUTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "luts")
 
-    def __init__(self):
-        pass
-
     @classmethod
     def _get_lut_list(cls):
         """Discover all .cube files in the luts/ directory."""
@@ -359,7 +274,7 @@ class LUTLoader:
         return {
             "required": {
                 "lut_name": (lut_files, {
-                    "tooltip": "Select a .cube LUT file from the bundled luts/ folder"
+                    "tooltip": "Select a .cube LUT. Note: 'AppleLog2_to_Rec709' is a technical conversion LUT — it expects Apple Log footage as input, not regular sRGB images."
                 }),
             },
         }
@@ -373,14 +288,15 @@ class LUTLoader:
         "LUT Loader\n\n"
         "Loads a .cube 3D LUT file from the bundled luts/ folder.\n"
         "Connect the output to a LUT Apply node.\n\n"
-        "Bundled LUT: iPhone 15 Pro Standard — baked from the\n"
-        "Camera Forensic Realism Engine's color science pipeline."
+        "Bundled LUTs:\n"
+        "- AppleLog2_to_Rec709: official Apple Log -> Rec.709 conversion.\n"
+        "  Only correct on Apple Log footage, NOT on regular sRGB images.\n"
+        "- Portra 800: creative film-emulation look for sRGB images.\n\n"
+        "Drop your own .cube files into luts/ and restart ComfyUI."
     )
 
     def load_lut(self, lut_name: str):
         """Load and parse the selected .cube LUT file."""
-        from lut_engine import parse_cube_file
-
         filepath = os.path.join(self.LUTS_DIR, lut_name)
 
         if not os.path.isfile(filepath):
@@ -409,9 +325,6 @@ class LUTApply:
     LUT Apply — Apply a loaded 3D LUT to an image with adjustable strength.
     """
 
-    def __init__(self):
-        pass
-
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -421,7 +334,7 @@ class LUTApply:
                 "strength": ("FLOAT", {
                     "default": 0.85, "min": 0.0, "max": 1.0, "step": 0.01,
                     "display": "slider",
-                    "tooltip": "LUT intensity. 0.0 = original, 1.0 = full LUT effect. 0.85 recommended."
+                    "tooltip": "LUT intensity. 0.0 = original, 1.0 = full LUT effect."
                 }),
             },
         }
@@ -434,15 +347,13 @@ class LUTApply:
     DESCRIPTION = (
         "LUT Apply\n\n"
         "Applies a 3D LUT (from LUT Loader) to your image using\n"
-        "trilinear interpolation for smooth, accurate color grading.\n\n"
-        "Strength controls the blend between original and LUT-graded.\n"
-        "0.85 = recommended for natural iPhone look."
+        "tetrahedral interpolation — the industry-standard method\n"
+        "(Resolve, camera ISPs), more accurate than trilinear.\n\n"
+        "Strength controls the blend between original and LUT-graded."
     )
 
     def apply_lut(self, image: torch.Tensor, lut_data: dict, strength: float):
         """Apply the loaded LUT to each image in the batch."""
-        from lut_engine import apply_lut_with_strength
-
         lut = lut_data["lut"]
         domain_min = lut_data["domain_min"]
         domain_max = lut_data["domain_max"]
@@ -461,4 +372,3 @@ class LUTApply:
         output = torch.stack(results, dim=0)
         print(f"🎨 LUT Apply: Applied '{lut_name}' at {strength:.0%} strength")
         return (output,)
-

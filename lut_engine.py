@@ -1,15 +1,21 @@
 """
 LUT Engine — .cube 3D LUT Parser & Applicator
-Zero-dependency implementation using numpy trilinear interpolation.
+Zero-dependency implementation using numpy.
 
 Supports the Adobe/IRIDAS .cube format (1.0 spec):
 - LUT_3D_SIZE
 - DOMAIN_MIN / DOMAIN_MAX
 - RGB data lines
 
+Interpolation is tetrahedral (the industry standard used by Resolve and
+camera ISPs) — more accurate than trilinear, especially along the neutral
+axis, because each lattice cell is split into 6 tetrahedra and only the 4
+relevant corners contribute to each pixel.
+
 Usage:
     lut, domain_min, domain_max = parse_cube_file("path/to/lut.cube")
-    result = apply_lut_with_strength(image, lut, domain_min, domain_max, strength=0.85)
+    result = apply_lut_with_strength(image, lut, domain_min, domain_max,
+                                     strength=0.85)
 """
 
 import numpy as np
@@ -21,7 +27,7 @@ def parse_cube_file(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Parse a .cube LUT file into a numpy array.
 
     Returns:
-        lut: np.ndarray of shape (N, N, N, 3) — the 3D LUT data
+        lut: np.ndarray of shape (N, N, N, 3) — indexed [b, g, r]
         domain_min: np.ndarray of shape (3,) — input domain minimum
         domain_max: np.ndarray of shape (3,) — input domain maximum
 
@@ -83,9 +89,70 @@ def parse_cube_file(filepath: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     return lut, domain_min, domain_max
 
 
+def _tetrahedral_chunk(pix: np.ndarray, lut: np.ndarray, n: int) -> np.ndarray:
+    """Tetrahedral interpolation for a flat (P, 3) block of LUT coordinates
+    already scaled to [0, n-1] index space. lut is indexed [b, g, r]."""
+    idx0 = np.floor(pix).astype(np.int32)
+    idx0 = np.minimum(idx0, n - 2) if n > 1 else idx0
+    idx0 = np.maximum(idx0, 0)
+    frac = (pix - idx0).astype(np.float32)
+
+    r0, g0, b0 = idx0[:, 0], idx0[:, 1], idx0[:, 2]
+    r1, g1, b1 = r0 + 1, g0 + 1, b0 + 1
+    if n == 1:
+        return lut[b0 * 0, g0 * 0, r0 * 0]
+    dr, dg, db = frac[:, 0], frac[:, 1], frac[:, 2]
+
+    out = np.empty((pix.shape[0], 3), dtype=np.float32)
+
+    # Each lattice cell splits into 6 tetrahedra by the ordering of the
+    # fractional coordinates. Only 4 corners are fetched per pixel.
+    # Corner naming: cXYZ means (r + X, g + Y, b + Z).
+    cases = [
+        # condition,                corners (as index tuples),                weights
+        (lambda: (dr >= dg) & (dg >= db),
+         [(b0, g0, r0), (b0, g0, r1), (b0, g1, r1), (b1, g1, r1)],
+         lambda r, g, b: (1 - r, r - g, g - b, b)),
+        (lambda: (dr >= db) & (db > dg),
+         [(b0, g0, r0), (b0, g0, r1), (b1, g0, r1), (b1, g1, r1)],
+         lambda r, g, b: (1 - r, r - b, b - g, g)),
+        (lambda: (db > dr) & (dr >= dg),
+         [(b0, g0, r0), (b1, g0, r0), (b1, g0, r1), (b1, g1, r1)],
+         lambda r, g, b: (1 - b, b - r, r - g, g)),
+        (lambda: (dg > dr) & (dr >= db),
+         [(b0, g0, r0), (b0, g1, r0), (b0, g1, r1), (b1, g1, r1)],
+         lambda r, g, b: (1 - g, g - r, r - b, b)),
+        (lambda: (dg >= db) & (db > dr),
+         [(b0, g0, r0), (b0, g1, r0), (b1, g1, r0), (b1, g1, r1)],
+         lambda r, g, b: (1 - g, g - b, b - r, r)),
+        (lambda: (db > dg) & (dg > dr),
+         [(b0, g0, r0), (b1, g0, r0), (b1, g1, r0), (b1, g1, r1)],
+         lambda r, g, b: (1 - b, b - g, g - r, r)),
+    ]
+
+    assigned = np.zeros(pix.shape[0], dtype=bool)
+    for cond, corners, weight_fn in cases:
+        m = cond() & ~assigned
+        if not np.any(m):
+            continue
+        assigned |= m
+        rm, gm, bm = dr[m], dg[m], db[m]
+        w0, w1, w2, w3 = weight_fn(rm, gm, bm)
+        c0 = lut[corners[0][0][m], corners[0][1][m], corners[0][2][m]]
+        c1 = lut[corners[1][0][m], corners[1][1][m], corners[1][2][m]]
+        c2 = lut[corners[2][0][m], corners[2][1][m], corners[2][2][m]]
+        c3 = lut[corners[3][0][m], corners[3][1][m], corners[3][2][m]]
+        out[m] = (c0 * w0[:, None] + c1 * w1[:, None]
+                  + c2 * w2[:, None] + c3 * w3[:, None])
+
+    return out
+
+
 def apply_lut_3d(image: np.ndarray, lut: np.ndarray,
-                  domain_min: np.ndarray, domain_max: np.ndarray) -> np.ndarray:
-    """Apply a 3D LUT to an image using trilinear interpolation.
+                 domain_min: np.ndarray, domain_max: np.ndarray) -> np.ndarray:
+    """Apply a 3D LUT to an image using tetrahedral interpolation.
+
+    Processes in chunks to keep peak memory flat regardless of image size.
 
     Args:
         image: float32 array (H, W, 3) in [0, 1]
@@ -97,63 +164,26 @@ def apply_lut_3d(image: np.ndarray, lut: np.ndarray,
         float32 array (H, W, 3) in [0, 1]
     """
     h, w, _ = image.shape
-    n = lut.shape[0]  # LUT size
+    n = lut.shape[0]
 
-    # Normalize input to LUT domain [0, N-1]
     domain_range = domain_max - domain_min
     domain_range = np.where(domain_range < 1e-10, 1.0, domain_range)
 
-    # Scale image values to LUT index space
-    coords = (image - domain_min) / domain_range * (n - 1)
-    coords = np.clip(coords, 0, n - 1)
+    coords = (image.reshape(-1, 3) - domain_min) / domain_range * (n - 1)
+    coords = np.clip(coords, 0, n - 1).astype(np.float32)
 
-    # Integer indices for the 8 corners of the interpolation cube
-    idx0 = np.floor(coords).astype(np.int32)
-    idx1 = np.minimum(idx0 + 1, n - 1)
+    out = np.empty_like(coords)
+    chunk = 1 << 21  # ~2M pixels per block
+    for start in range(0, coords.shape[0], chunk):
+        out[start:start + chunk] = _tetrahedral_chunk(
+            coords[start:start + chunk], lut, n)
 
-    # Fractional parts for interpolation weights
-    frac = coords - idx0.astype(np.float32)
-
-    # Flatten for indexing
-    r0, g0, b0 = idx0[:, :, 0], idx0[:, :, 1], idx0[:, :, 2]
-    r1, g1, b1 = idx1[:, :, 0], idx1[:, :, 1], idx1[:, :, 2]
-    fr, fg, fb = frac[:, :, 0], frac[:, :, 1], frac[:, :, 2]
-
-    # Trilinear interpolation using the 8 corners
-    # c000 = lut[b0, g0, r0], c100 = lut[b0, g0, r1], etc.
-    c000 = lut[b0, g0, r0]
-    c100 = lut[b0, g0, r1]
-    c010 = lut[b0, g1, r0]
-    c110 = lut[b0, g1, r1]
-    c001 = lut[b1, g0, r0]
-    c101 = lut[b1, g0, r1]
-    c011 = lut[b1, g1, r0]
-    c111 = lut[b1, g1, r1]
-
-    # Expand fractional dims for broadcasting
-    fr = fr[:, :, np.newaxis]
-    fg = fg[:, :, np.newaxis]
-    fb = fb[:, :, np.newaxis]
-
-    # Interpolate along R axis
-    c00 = c000 * (1 - fr) + c100 * fr
-    c01 = c001 * (1 - fr) + c101 * fr
-    c10 = c010 * (1 - fr) + c110 * fr
-    c11 = c011 * (1 - fr) + c111 * fr
-
-    # Interpolate along G axis
-    c0 = c00 * (1 - fg) + c10 * fg
-    c1 = c01 * (1 - fg) + c11 * fg
-
-    # Interpolate along B axis
-    result = c0 * (1 - fb) + c1 * fb
-
-    return np.clip(result, 0.0, 1.0).astype(np.float32)
+    return np.clip(out.reshape(h, w, 3), 0.0, 1.0).astype(np.float32)
 
 
 def apply_lut_with_strength(image: np.ndarray, lut: np.ndarray,
-                             domain_min: np.ndarray, domain_max: np.ndarray,
-                             strength: float = 1.0) -> np.ndarray:
+                            domain_min: np.ndarray, domain_max: np.ndarray,
+                            strength: float = 1.0) -> np.ndarray:
     """Apply a 3D LUT with adjustable strength (opacity).
 
     Args:

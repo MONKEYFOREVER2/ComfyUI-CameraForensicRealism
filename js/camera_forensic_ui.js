@@ -1,11 +1,10 @@
 import { app } from "../../scripts/app.js";
 
 /**
- * 📸 Camera Forensic Realism Engine — Premium UI Dashboard
- * ==========================================================
+ * 📸 Camera Forensic Realism Engine — Premium UI Dashboard (v4)
+ * ==============================================================
  * Gold/Black themed DOM widget replacing ALL default drawing.
- * Includes tooltips, styled sliders, toggles, and dynamic layout
- * mimicking the Advanced Image Denoiser style.
+ * Matches the v4 iPhone 17 pipeline parameter set.
  */
 
 const NODE_NAME = "CameraForensicRealismEngine";
@@ -13,62 +12,47 @@ const NODE_MIN_WIDTH = 420;
 const NODE_TITLE_HEIGHT = 40;
 
 const SECTIONS = {
-    master: { icon: "⚡", label: "Master Settings" },
-    tone: { icon: "🌓", label: "Tone Curve" },
-    color: { icon: "🎨", label: "Display P3 Color" },
-    hdr: { icon: "✨", label: "Smart HDR" },
-    skin: { icon: "👩🏽‍🦱", label: "Real Tone" },
-    fusion: { icon: "🧠", label: "Deep Fusion" },
-    wb: { icon: "☀️", label: "White Balance" },
-    grade: { icon: "🔵", label: "Color Grading" },
-    sharp: { icon: "🔪", label: "ISP Sharpening" },
-    sensor: { icon: "📷", label: "Sensor FX" },
+    master: { icon: "⚡", label: "Master", toggle: null },
+    wb:     { icon: "☀️", label: "White Balance", toggle: "enable_white_balance" },
+    tone:   { icon: "🌓", label: "Global Tone", toggle: "enable_tone" },
+    hdr:    { icon: "✨", label: "Smart HDR", toggle: "enable_smart_hdr" },
+    color:  { icon: "🎨", label: "Color Science (Oklab)", toggle: "enable_color" },
+    detail: { icon: "🔪", label: "Detail", toggle: "enable_detail" },
+    optics: { icon: "📷", label: "Optics & Sensor", toggle: "enable_optics" },
 };
 
 const WIDGET_META = {
-    master_strength: { type: "slider", section: "master", label: "Master Strength", min: 0, max: 2, step: 0.01, desc: "Global intensity of all forensic realism effects." },
-    seed: { type: "number", section: "master", label: "Seed", desc: "Random seed for noise generation." },
+    photographic_style: { type: "combo", section: "master", label: "Style", desc: "iPhone 17 Photographic Style preset. Undertones steer warmth, moods steer tone+color. Applied as offsets on top of your sliders." },
+    master_strength: { type: "slider", section: "master", label: "Master Strength", min: 0, max: 1, step: 0.01, desc: "Final blend between original and fully processed image." },
+    seed: { type: "number", section: "master", label: "Seed", desc: "Random seed for grain reproducibility." },
     control_after_generate: { type: "combo", section: "master", label: "Seed Mode", desc: "Change seed behavior after generation." },
 
-    enable_tone_mapping: { type: "toggle", section: "tone", label: "Enable", desc: "Apply Apple-style tone mapping curve." },
-    tone_strength: { type: "slider", section: "tone", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Overall strength of the tone curve effect." },
-    highlight_rolloff: { type: "slider", section: "tone", label: "Highlight Rolloff", min: 0, max: 1, step: 0.01, desc: "Smooth compression of bright highlights to prevent clipping." },
-    shadow_lift: { type: "slider", section: "tone", label: "Shadow Lift", min: 0, max: 1, step: 0.01, desc: "Raises shadow black point for a slightly softer, photographic look." },
-    contrast: { type: "slider", section: "tone", label: "Contrast", min: 0, max: 1, step: 0.01, desc: "Midtone contrast intensity (S-curve steepness)." },
+    enable_white_balance: { type: "toggle", section: "wb", label: "Enable", desc: "Channel gains in linear light, luminance-preserving." },
+    wb_temperature: { type: "slider", section: "wb", label: "Temperature", min: -1, max: 1, step: 0.01, desc: "Blue-Orange axis. iPhone AWB sits slightly warm (~0.1)." },
+    wb_tint: { type: "slider", section: "wb", label: "Tint", min: -1, max: 1, step: 0.01, desc: "Green-Magenta axis. 0 = neutral." },
 
-    enable_p3_color: { type: "toggle", section: "color", label: "Enable", desc: "Transform gamut to Display P3 space (richer reds/greens)." },
-    color_strength: { type: "slider", section: "color", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Intensity of the P3 color transformation." },
-    color_saturation: { type: "slider", section: "color", label: "Saturation", min: 0, max: 1, step: 0.01, desc: "Overall image saturation boost." },
-    color_warmth: { type: "slider", section: "color", label: "Warmth", min: 0, max: 1, step: 0.01, desc: "Apple's signature slight warmth bias in reds/yellows." },
+    enable_tone: { type: "toggle", section: "tone", label: "Enable", desc: "Linear-light global tone mapping." },
+    exposure: { type: "slider", section: "tone", label: "Exposure", min: -1, max: 1, step: 0.01, desc: "Exposure in EV. iPhone meters slightly bright." },
+    contrast: { type: "slider", section: "tone", label: "Contrast", min: -1, max: 1, step: 0.01, desc: "Midtone contrast around the 0.18 photographic pivot." },
+    shadows: { type: "slider", section: "tone", label: "Shadows", min: 0, max: 1, step: 0.01, desc: "Luminance-masked shadow lift. iPhone never crushes blacks." },
+    highlights: { type: "slider", section: "tone", label: "Highlights", min: 0, max: 1, step: 0.01, desc: "Reinhard soft-knee rolloff — highlights compress smoothly, never clip." },
 
-    enable_local_tone: { type: "toggle", section: "hdr", label: "Enable", desc: "Smart HDR local contrast emulation." },
-    local_tone_strength: { type: "slider", section: "hdr", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Intensity of local contrast enhancements." },
-    detail_boost: { type: "slider", section: "hdr", label: "Detail Boost", min: 0, max: 1, step: 0.01, desc: "Micro-contrast extraction in mid-frequency details." },
+    enable_smart_hdr: { type: "toggle", section: "hdr", label: "Enable", desc: "Local tone mapping in log-luminance (Smart HDR 5 style fusion look)." },
+    hdr_strength: { type: "slider", section: "hdr", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Local dynamic range compression — shadows up, highlights down, detail untouched." },
 
-    enable_skin_rendering: { type: "toggle", section: "skin", label: "Enable", desc: "Real Tone skin color protection and rendering." },
-    skin_strength: { type: "slider", section: "skin", label: "Strength", min: 0, max: 1, step: 0.01, desc: "How aggressively skin tones are isolated and processed." },
-    skin_warmth: { type: "slider", section: "skin", label: "Skin Warmth", min: 0, max: 1, step: 0.01, desc: "Reduces orange bias and adds natural rosy warmth to skin." },
+    enable_color: { type: "toggle", section: "color", label: "Enable", desc: "Perceptual color rendering in Oklab space." },
+    vibrance: { type: "slider", section: "color", label: "Vibrance", min: 0, max: 1, step: 0.01, desc: "Smart saturation: boosts muted colors more than saturated ones. Hue-preserving." },
+    skin_protection: { type: "slider", section: "color", label: "Skin Protection", min: 0, max: 1, step: 0.01, desc: "Shields skin tones from vibrance and caps skin chroma — no orange faces." },
+    shadow_tint: { type: "slider", section: "color", label: "Shadow Tint", min: 0, max: 1, step: 0.01, desc: "Subtle cool/blue tint in shadows — the iPhone blue-black signature." },
+    highlight_warmth: { type: "slider", section: "color", label: "Highlight Warmth", min: 0, max: 1, step: 0.01, desc: "Golden warmth in bright areas, complements the cool shadows." },
 
-    enable_deep_fusion: { type: "toggle", section: "fusion", label: "Enable", desc: "Isolate and crunch high-frequency textures (fabric, pores) without halos." },
-    fusion_strength: { type: "slider", section: "fusion", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Texture amplification strength (the iPhone computational crunch)." },
-    fusion_texture_freq: { type: "slider", section: "fusion", label: "Texture Freq", min: 0, max: 1, step: 0.01, desc: "Determines which texture thicknesses are crunched." },
+    enable_detail: { type: "toggle", section: "detail", label: "Enable", desc: "Two-scale luminance detail with halo suppression." },
+    texture: { type: "slider", section: "detail", label: "Texture", min: 0, max: 1, step: 0.01, desc: "Fine-scale detail (~1px): pores, fabric, hair." },
+    clarity: { type: "slider", section: "detail", label: "Clarity", min: 0, max: 1, step: 0.01, desc: "Mid-scale local punch. Keep low for a natural look." },
 
-    enable_white_balance: { type: "toggle", section: "wb", label: "Enable", desc: "Apply signature iPhone warm auto-white-balance bias." },
-    wb_strength: { type: "slider", section: "wb", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Overall intensity of the AWB correction." },
-    wb_temperature: { type: "slider", section: "wb", label: "Temperature", min: -1, max: 1, step: 0.01, desc: "Blue-Yellow axis balance." },
-    wb_tint: { type: "slider", section: "wb", label: "Tint", min: -1, max: 1, step: 0.01, desc: "Green-Magenta axis balance." },
-
-    enable_color_grading: { type: "toggle", section: "grade", label: "Enable", desc: "Cinematic color grading (blue shadows, warm highlights)." },
-    blue_shadows: { type: "slider", section: "grade", label: "Blue Shadows", min: 0, max: 1, step: 0.01, desc: "Injects deep inky blue tint into the darkest shadows." },
-    warm_highlights: { type: "slider", section: "grade", label: "Warm Highlights", min: 0, max: 1, step: 0.01, desc: "Pushes bright highlights towards a soft golden hue." },
-
-    enable_sharpening: { type: "toggle", section: "sharp", label: "Enable", desc: "ISP-style luminance unsharp mask computation." },
-    sharpen_strength: { type: "slider", section: "sharp", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Intensity of the sharpening halo effect." },
-
-    enable_sensor: { type: "toggle", section: "sensor", label: "Enable", desc: "Physical sensor imperfections (noise, vignette)." },
-    sensor_strength: { type: "slider", section: "sensor", label: "Strength", min: 0, max: 1, step: 0.01, desc: "Overall intensity of sensor effects combined." },
-    sensor_noise: { type: "slider", section: "sensor", label: "Luma Noise", min: 0, max: 1, step: 0.01, desc: "Amount of fine digital grain added to midtones/shadows." },
-    sensor_vignette: { type: "slider", section: "sensor", label: "Vignette", min: 0, max: 1, step: 0.01, desc: "f/1.78 lens shading light falloff at the corners." },
+    enable_optics: { type: "toggle", section: "optics", label: "Enable", desc: "Lens vignette + sensor grain." },
+    grain: { type: "slider", section: "optics", label: "Grain", min: 0, max: 1, step: 0.01, desc: "Photon-weighted sensor noise, stronger in shadows." },
+    vignette: { type: "slider", section: "optics", label: "Vignette", min: 0, max: 1, step: 0.01, desc: "Natural illumination falloff applied in linear light." },
 };
 
 /* ── CSS injection ───────────────────────────────────────────────────── */
@@ -81,13 +65,19 @@ function injectCSS() {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
     background: #0d0d08;
     border-radius: 8px;
-    padding: 12px;
     color: #d0d0c0;
     user-select: none;
     width: 100%;
+    height: 100%;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: #333322 transparent;
 }
+.cfr-root::-webkit-scrollbar { width: 6px; }
+.cfr-root::-webkit-scrollbar-thumb { background: #333322; border-radius: 3px; }
+.cfr-inner { padding: 12px; box-sizing: border-box; }
 .cfr-header {
     text-align: center;
     padding: 4px 0 12px;
@@ -198,17 +188,20 @@ function injectCSS() {
 function buildUI() {
     const el = document.createElement("div");
     el.className = "cfr-root";
+    const inner = document.createElement("div");
+    inner.className = "cfr-inner";
+    el.appendChild(inner);
 
     // Header & Description
     let html = `
         <div class="cfr-header">
             <div class="cfr-title">Camera Forensic Realism</div>
-            <div class="cfr-subtitle">iPhone 15 Pro • ISP Emulation • 9 Stages</div>
+            <div class="cfr-subtitle">iPhone 17 • Photonic Engine • Photographic Styles</div>
         </div>
         <div class="cfr-info">
-            <span class="cfr-info-badge">★ iPHONE ISP PIPELINE</span>
-            <div class="cfr-info-desc">Emulates Apple’s Image Signal Processor color science. Transforms AI images to match iPhone photography with accurate tone mapping, P3 color, and blue-black shadows.</div>
-            <div class="cfr-info-tip">💡 Place after detailers, before SaveImage.</div>
+            <span class="cfr-info-badge">★ iPHONE 17 ISP PIPELINE</span>
+            <div class="cfr-info-desc">Honest color science: linear-light white balance & tone, Smart HDR local mapping, Oklab vibrance with real skin protection, halo-suppressed detail, photon-weighted grain.</div>
+            <div class="cfr-info-tip">💡 Pick a Photographic Style, then fine-tune. Place after detailers, before SaveImage.</div>
         </div>
     `;
 
@@ -244,7 +237,7 @@ function buildUI() {
         html += `</div>`;
     });
 
-    el.innerHTML = html;
+    inner.innerHTML = html;
     return el;
 }
 
@@ -259,18 +252,15 @@ function hideDefaultWidget(w) {
 }
 
 function updateSectionVisibility(el, node) {
-    // Hide controls if section is toggled off
-    Object.keys(SECTIONS).forEach(secId => {
-        if (secId === "master") return;
+    // Hide a section's controls when its enable toggle is off
+    Object.entries(SECTIONS).forEach(([secId, sec]) => {
+        if (!sec.toggle) return;
 
-        const toggleName = "enable_" + (secId === "hdr" ? "local_tone" : secId === "skin" ? "skin_rendering" : secId === "fusion" ? "deep_fusion" : secId === "sharp" ? "sharpening" : secId === "tone" ? "tone_mapping" : secId === "grade" ? "color_grading" : secId === "color" ? "p3_color" : secId === "wb" ? "white_balance" : secId);
-
-        const toggleW = getWidget(node, toggleName);
+        const toggleW = getWidget(node, sec.toggle);
         if (!toggleW) return;
 
         const isEnabled = !!toggleW.value;
 
-        // Find all rows in this section except the toggle itself
         Object.entries(WIDGET_META).forEach(([name, meta]) => {
             if (meta.section === secId && meta.type !== "toggle") {
                 const row = el.querySelector(`#row_${name}`);
@@ -278,19 +268,6 @@ function updateSectionVisibility(el, node) {
             }
         });
     });
-}
-
-function calcNodeSize(el, node) {
-    const visibleRows = el.querySelectorAll(".cfr-row:not(.hidden)").length;
-    const numSections = Object.keys(SECTIONS).length;
-
-    const headerH = 120; // Title bar + info box
-    const rowH = 30;     // height + margins
-    const secH = 36;     // section headers
-
-    const totalH = NODE_TITLE_HEIGHT + headerH + (numSections * secH) + (visibleRows * rowH);
-    const currentW = Math.max(node.size?.[0] || 0, NODE_MIN_WIDTH);
-    return [currentW, totalH];
 }
 
 /* ── Extension ───────────────────────────────────────────────────────── */
@@ -306,11 +283,81 @@ app.registerExtension({
         // Hide all default widgets
         for (const name of paramNames) hideDefaultWidget(getWidget(node, name));
 
-        // Build native DOM
+        /* The frontend's DOM-widget layout (DOMWidgetImpl.computeLayoutSize
+           + _arrangeWidgets) sizes the widget area from getMinHeight /
+           getMaxHeight, and re-runs on EVERY canvas redraw — including
+           clicks. Report the panel's real measured content height as both
+           min and max: the layout always allocates exactly enough space and
+           can never stretch the panel into leftover node body space. */
         const el = buildUI();
-        node.addDOMWidget("cfr_premium_ui", "customwidget", el, { serialize: false });
+        const inner = el.querySelector(".cfr-inner");
+        let contentH = 600;
+        const widgetOptions = {
+            serialize: false,
+            getMinHeight: () => contentH,
+            getMaxHeight: () => contentH,
+        };
+        let domWidget = node.addDOMWidget(
+            "cfr_premium_ui", "customwidget", el, widgetOptions);
 
-        if (!node.size || node.size[0] < NODE_MIN_WIDTH) node.size = [NODE_MIN_WIDTH, 600];
+        /* On workflow reload, the frontend clears its DOM-widget store
+           while nodes are being rebuilt; depending on timing our early
+           registration can be wiped, leaving the panel orphaned — visible
+           detached or gone, never tracking the node. Re-adding the widget
+           re-registers it and the Vue overlay adopts the panel again. */
+        function remount() {
+            if (document.contains(el)) return;
+            const idx = node.widgets.indexOf(domWidget);
+            if (idx >= 0) node.widgets.splice(idx, 1);
+            try { domWidget.onRemove?.(); } catch (e) { /* stale store entry */ }
+            domWidget = node.addDOMWidget(
+                "cfr_premium_ui", "customwidget", el, widgetOptions);
+            node.setDirtyCanvas?.(true, true);
+        }
+
+        function measure() {
+            if (inner.offsetHeight) contentH = inner.offsetHeight + 2;
+        }
+
+        /* Track reflow (e.g. text wrapping after a width change) so the
+           layout's min/max height stays accurate. Passive: never resizes
+           the node itself. */
+        new ResizeObserver(() => measure()).observe(inner);
+
+        /* Resize the node to its authoritative minimum: computeSize()
+           already includes our getMinHeight via computeLayoutSize, so this
+           both grows undersized and shrinks oversized nodes (the frontend
+           itself only ever auto-grows). Width: keep the user's width but
+           clamp out garbage serialized by older versions of this node. */
+        function fitHeight() {
+            requestAnimationFrame(() => {
+                measure();
+                if (!inner.offsetHeight) return;
+                const fit = node.computeSize();
+                const width = Math.min(
+                    Math.max(node.size[0], NODE_MIN_WIDTH), 800);
+                node.setSize([width, fit[1]]);
+                node.setDirtyCanvas?.(true, true);
+            });
+        }
+
+        /* The panel is mounted into the canvas overlay lazily (first time
+           the widget becomes visible), so right after configure it may not
+           be measurable yet — retry until it is. If it stays unmounted,
+           the store registration was lost on reload: remount it. */
+        let fitTries = 0;
+        function fitWhenReady() {
+            measure();
+            if (!inner.offsetHeight) {
+                if (fitTries === 6 || fitTries === 14) remount();
+                if (fitTries++ < 25) {
+                    setTimeout(fitWhenReady, 150);
+                    return;
+                }
+                return;
+            }
+            fitHeight();
+        }
 
         node.color = "#1A1A00"; node.bgcolor = "#0A0A0A";
 
@@ -334,10 +381,7 @@ app.registerExtension({
                     if (domVal) domVal.textContent = lgW.value ? "ON" : "OFF";
 
                     updateSectionVisibility(el, node);
-                    requestAnimationFrame(() => {
-                        node.setSize(calcNodeSize(el, node));
-                        node.setDirtyCanvas(true, true);
-                    });
+                    fitHeight();
                 });
             } else if (meta.type === "combo") {
                 (lgW.options?.values || []).forEach(opt => {
@@ -376,13 +420,41 @@ app.registerExtension({
             updateSectionVisibility(el, node);
         }
 
+        /* Repair values from workflows saved with the old node version:
+           widget values restore by position, so removed v3 params can land
+           in today's params with the wrong type or out-of-range values. */
+        function sanitize() {
+            Object.entries(WIDGET_META).forEach(([name, meta]) => {
+                const lgW = getWidget(node, name);
+                if (!lgW) return;
+                if (meta.type === "slider") {
+                    let v = Number(lgW.value);
+                    if (!Number.isFinite(v)) v = meta.min;
+                    v = Math.min(meta.max, Math.max(meta.min, v));
+                    if (v !== lgW.value) { lgW.value = v; lgW.callback?.(v); }
+                } else if (meta.type === "toggle") {
+                    if (typeof lgW.value !== "boolean") {
+                        lgW.value = !!lgW.value;
+                        lgW.callback?.(lgW.value);
+                    }
+                } else if (meta.type === "combo") {
+                    const values = lgW.options?.values || [];
+                    if (values.length && !values.includes(lgW.value)) {
+                        lgW.value = values[0];
+                        lgW.callback?.(lgW.value);
+                    }
+                }
+            });
+        }
+
         const origConfigure = node.onConfigure;
         node.onConfigure = function (info) {
             origConfigure?.apply(this, arguments);
             setTimeout(() => {
+                sanitize();
                 syncFromWidgets();
-                node.setSize(calcNodeSize(el, node));
-                node.setDirtyCanvas?.(true, true);
+                fitTries = 0;
+                fitWhenReady();
             }, 80);
         };
 
@@ -396,9 +468,9 @@ app.registerExtension({
         };
 
         setTimeout(() => {
+            sanitize();
             syncFromWidgets();
-            node.setSize(calcNodeSize(el, node));
-            node.setDirtyCanvas?.(true, true);
+            fitWhenReady();
         }, 150);
     },
 });

@@ -2,19 +2,21 @@
 ComfyUI-CameraForensicRealism
 Camera Forensic Realism Engine — Custom Node for ComfyUI
 
-Injects real camera sensor fingerprints into AI-generated images to make
-them forensically indistinguishable from real photographs.
+Emulates the iPhone 17 ISP color pipeline so AI-generated images pick up
+real camera color science instead of the flat "AI look".
 
-Stages:
-1. Bayer CFA demosaicing artifacts
-2. Sensor noise (shot + read + dark current + hot pixels)
-3. Camera-specific JPEG compression artifacts
-4. cos⁴ lens vignetting with asymmetry
-5. ISP color bias
+Pipeline (v4):
+1. White balance — linear light, luminance-preserving
+2. Global tone — exposure, shadow lift, midtone contrast, filmic rolloff
+3. Smart HDR — local tone mapping in log-luminance
+4. Color science — Oklab vibrance, skin protection, iPhone split-tone
+5. Detail — two-scale halo-suppressed luminance sharpening
+6. Optics & sensor — linear-light vignette + photon-weighted grain
++ 14 iPhone 17 Photographic Styles presets
 
 Also includes:
-- LUT Loader: Load .cube 3D LUT files (bundled iPhone 15 Pro LUT)
-- LUT Apply: Apply LUTs with adjustable strength
+- LUT Loader: Load .cube 3D LUT files
+- LUT Apply: Tetrahedral-interpolation LUT application with strength
 """
 
 from .nodes import CameraForensicRealismEngine, LUTLoader, LUTApply
@@ -26,7 +28,7 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "CameraForensicRealismEngine": "🔬 Camera Forensic Realism Engine",
+    "CameraForensicRealismEngine": "📷 Camera Forensic Realism (iPhone 17)",
     "LUTLoader": "🎨 LUT Loader",
     "LUTApply": "🎨 LUT Apply",
 }
@@ -34,4 +36,3 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 WEB_DIRECTORY = "./js"
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
-

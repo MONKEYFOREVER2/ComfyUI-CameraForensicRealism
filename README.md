@@ -1,8 +1,8 @@
-# 📷 Camera Forensic Realism Engine v2
+# 📷 Camera Forensic Realism Engine v4
 
-Makes AI-generated images look like they were shot on an **iPhone 15 Pro** by emulating Apple's ISP color science pipeline.
+Makes AI-generated images look like they were shot on an **iPhone 17** by emulating Apple's ISP color pipeline — with honest, physically-grounded color science.
 
-> No more "AI look" — this node applies the same sensor artifacts, tone curves, and color science that real camera hardware produces.
+> No placebo sliders. Every stage in v4 does real, verifiable work: white balance and tone mapping in linear light, local HDR in log-luminance, color rendering in Oklab, and tetrahedral LUT interpolation.
 
 ---
 
@@ -10,13 +10,23 @@ Makes AI-generated images look like they were shot on an **iPhone 15 Pro** by em
 
 | # | Stage | What It Does |
 |---|-------|-------------|
-| 1 | **White Balance** | iPhone warm daylight bias (temperature + tint) |
-| 2 | **Tone Mapping** | S-curve with filmic highlight rolloff + shadow lifting |
-| 3 | **Display P3 Color** | Wider gamut rendering via CIE XYZ transforms (richer reds/greens) |
-| 4 | **Smart HDR** | Local tone mapping for micro-contrast and detail pop |
-| 5 | **Real Tone** | Skin-targeted rendering with HSL detection (warm, not orange) |
-| 6 | **ISP Sharpening** | Luminance-only unsharp mask (Apple crispness) |
-| 7 | **Sensor FX** | Subtle luminance noise + gentle f/1.78 vignette |
+| 1 | **White Balance** | Channel gains in **linear light**, luminance-preserving (warming doesn't brighten) |
+| 2 | **Global Tone** | Exposure, shadow lift, midtone contrast around the 0.18 pivot, Reinhard highlight rolloff |
+| 3 | **Smart HDR** | Durand-style local tone mapping in log-luminance — shadows up, highlights down, detail untouched |
+| 4 | **Color Science** | **Oklab** rendering: hue-preserving vibrance, real skin protection, iPhone split-tone (cool shadows / warm highlights) |
+| 5 | **Detail** | Single two-scale stage (texture + clarity) with tanh halo suppression, luminance-only |
+| 6 | **Optics & Sensor** | Natural 1/(1+kr²)² vignette in linear light + photon-weighted grain |
+
+Plus **14 iPhone 17 Photographic Styles** presets (undertones + moods) applied as offsets on top of your sliders.
+
+### What changed from v2/v3
+
+- ❌ **Removed the fake "Display P3" stage** — it converted sRGB→XYZ→P3 and back (a mathematical no-op) and the only real effect was a plain saturation multiply. Replaced with genuine Oklab vibrance.
+- ❌ **Removed redundant multiplier sliders** (`wb_strength`, `tone_strength`, `sensor_strength`) — `master_strength` is now the one honest mix control.
+- ❌ **Merged three overlapping sharpeners** (detail boost / Deep Fusion / ISP sharpening) into one coherent detail stage.
+- 🐛 **Fixed the box blur** used by HDR and sharpening — it was a trailing window that shifted every blur diagonally and darkened the top/left borders.
+- 🐛 **Fixed the non-monotonic highlight clip** that could cause banding above white.
+- ✅ Skin handling is now an actual protection mask (Oklab hue ≈ 50°, plausible chroma/lightness) instead of a brightness filter on every warm pixel.
 
 ---
 
@@ -24,21 +34,9 @@ Makes AI-generated images look like they were shot on an **iPhone 15 Pro** by em
 
 ### Option 1: Git Clone (Recommended)
 
-Open a terminal and navigate to your ComfyUI custom nodes folder:
-
 ```bash
 cd ComfyUI/custom_nodes
-```
-
-Clone this repository:
-
-```bash
 git clone https://github.com/MONKEYFOREVER2/ComfyUI-CameraForensicRealism.git
-```
-
-Install dependencies:
-
-```bash
 cd ComfyUI-CameraForensicRealism
 pip install -r requirements.txt
 ```
@@ -47,45 +45,22 @@ Restart ComfyUI.
 
 ### Option 2: Manual Download
 
-1. Click the green **Code** button at the top of this page
-2. Select **Download ZIP**
-3. Extract the ZIP into your `ComfyUI/custom_nodes/` folder
-4. Make sure the folder is named `ComfyUI-CameraForensicRealism`
-5. Install dependencies:
-   ```bash
-   cd ComfyUI/custom_nodes/ComfyUI-CameraForensicRealism
-   pip install -r requirements.txt
-   ```
-6. Restart ComfyUI
-
-### Option 3: ComfyUI Manager
-
-If you have [ComfyUI Manager](https://github.com/ltdrdata/ComfyUI-Manager) installed:
-
-1. Open ComfyUI Manager
-2. Click **Install Custom Nodes**
-3. Search for `Camera Forensic Realism`
-4. Click **Install**
-5. Restart ComfyUI
+1. Click the green **Code** button → **Download ZIP**
+2. Extract into `ComfyUI/custom_nodes/` as `ComfyUI-CameraForensicRealism`
+3. `pip install -r requirements.txt`
+4. Restart ComfyUI
 
 ---
 
 ## 🎯 Finding the Node
 
-Once installed, find the node in the ComfyUI menu:
-
-**Right-click** → **Add Node** → **image/forensic** → **Camera Forensic Realism Engine**
-
----
+**Right-click** → **Add Node** → **image/forensic** → **📷 Camera Forensic Realism (iPhone 17)**
 
 ## ⚡ Quick Start
 
-1. Build your workflow as normal (generate/upscale/detail your image)
-2. Place the **Camera Forensic Realism Engine** node **after** your detailers/post-processing and **before** SaveImage
-3. Connect your image output to the node's input
-4. That's it — defaults are tuned for **iPhone 15 Pro Standard** style
-
-### Recommended Workflow Position
+1. Place the node **after** your detailers/post-processing and **before** SaveImage
+2. Pick a **Photographic Style** (start with `Standard`)
+3. Defaults are tuned for the iPhone 17 look — adjust to taste
 
 ```
 [Generate] → [Upscale] → [FaceDetailer] → [📷 Camera Forensic Realism] → [SaveImage]
@@ -95,90 +70,74 @@ Once installed, find the node in the ComfyUI menu:
 
 ## 🔧 Parameters
 
-### Master Controls
+### Master
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `master_strength` | `0.7` | Scales all effects globally. **0.6–0.8 recommended** |
-| `seed` | `0` | Random seed for noise reproducibility |
+| `photographic_style` | `Standard` | iPhone 17 Photographic Style preset (see below) |
+| `master_strength` | `0.85` | Final blend between original and processed image |
+| `seed` | `0` | Grain reproducibility |
 
-### Tone Mapping
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enable_tone_mapping` | `True` | iPhone S-curve: lifts shadows, compresses highlights |
-| `tone_strength` | `0.6` | Tone curve intensity (0.5–0.7 = natural iPhone) |
-| `highlight_rolloff` | `0.5` | Smooth highlight compression — prevents blown whites |
-| `shadow_lift` | `0.4` | Raises black level — iPhone never crushes pure black |
-| `contrast` | `0.5` | Mid-tone contrast punch |
+### Photographic Styles
 
-### Display P3 Color
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enable_p3_color` | `True` | Wider gamut rendering via CIE XYZ transform |
-| `color_strength` | `0.5` | P3 color rendering intensity |
-| `color_saturation` | `0.3` | Gamut saturation boost — keep low for realism |
-| `color_warmth` | `0.3` | Apple warm color bias |
+**Moods:** `Standard`, `Natural`, `Luminous`, `Vibrant`, `Dramatic`, `Quiet`, `Cozy`, `Ethereal`, `Muted B&W`, `Stark B&W`
+**Undertones:** `Amber`, `Gold`, `Rose Gold`, `Cool Rose`, `Neutral`
 
-### Smart HDR
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enable_local_tone` | `True` | Local contrast like Apple's multi-frame HDR |
-| `local_tone_strength` | `0.35` | Local contrast / HDR intensity |
-| `detail_boost` | `0.4` | Micro-detail enhancement — texture pop |
-
-### Real Tone (Skin)
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enable_skin_rendering` | `True` | Natural warm skin — prevents orange cast |
-| `skin_strength` | `0.5` | Skin rendering intensity |
-| `skin_warmth` | `0.4` | Skin warmth / natural glow |
-
-### Deep Fusion
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `enable_deep_fusion` | `True` | High-freq texture crunch (fabric, pores) |
-| `fusion_strength` | `0.6` | Texture amplification strength |
-| `fusion_texture_freq` | `0.5` | Which texture thicknesses get enhanced |
+Styles are applied as offsets on top of your slider values, mirroring how Apple's 2nd-gen Photographic Styles re-tune the same pipeline.
 
 ### White Balance
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enable_white_balance` | `True` | iPhone AWB — warm daylight bias |
-| `wb_strength` | `0.5` | White balance correction strength |
-| `wb_temperature` | `0.25` | Cool (blue) ← → Warm (orange). iPhone ≈ 0.2–0.3 |
-| `wb_tint` | `0.0` | Green ← → Magenta. 0 = neutral |
+| `enable_white_balance` | `True` | Linear-light channel gains, luminance-preserving |
+| `wb_temperature` | `0.12` | Cool (blue) ← → Warm (orange). iPhone AWB ≈ 0.1–0.15 |
+| `wb_tint` | `0.0` | Green ← → Magenta |
 
-### Color Grading
+### Global Tone
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enable_color_grading` | `True` | Blue-tinted blacks + warm golden highlights |
-| `blue_shadows` | `0.4` | Blue tint in darks — the iPhone blue-black look |
-| `warm_highlights` | `0.3` | Golden warmth in brights |
+| `enable_tone` | `True` | Linear-light tone mapping |
+| `exposure` | `0.05` | EV adjustment — iPhone meters slightly bright |
+| `contrast` | `0.15` | Midtone contrast around the 0.18 photographic pivot |
+| `shadows` | `0.35` | Luminance-masked shadow lift + tiny black-point lift |
+| `highlights` | `0.5` | Reinhard soft-knee rolloff — smooth, monotonic, never clips |
 
-### ISP Sharpening
+### Smart HDR
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enable_sharpening` | `True` | Apple-style luminance sharpening |
-| `sharpen_strength` | `0.3` | Sharpening intensity |
+| `enable_smart_hdr` | `True` | Local tone mapping in log-luminance |
+| `hdr_strength` | `0.35` | Local dynamic range compression amount |
 
-### Sensor FX
+### Color Science (Oklab)
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `enable_sensor` | `True` | Subtle luminance noise + lens vignette |
-| `sensor_strength` | `0.25` | Overall sensor effect intensity |
-| `sensor_noise` | `0.3` | Luminance noise — very subtle on iPhone |
-| `sensor_vignette` | `0.4` | Lens vignette — f/1.78 falloff |
+| `enable_color` | `True` | Perceptual color rendering |
+| `vibrance` | `0.4` | Smart saturation — boosts muted colors more, hue-preserving |
+| `skin_protection` | `0.7` | Shields skin from vibrance + caps skin chroma (no orange faces) |
+| `shadow_tint` | `0.25` | Subtle cool/blue shadows — the iPhone blue-black signature |
+| `highlight_warmth` | `0.2` | Golden warmth in highlights |
+
+### Detail
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enable_detail` | `True` | Two-scale luminance detail, halo-suppressed |
+| `texture` | `0.35` | Fine scale (~1px): pores, fabric, hair |
+| `clarity` | `0.2` | Mid scale (~2% of frame): local punch |
+
+### Optics & Sensor
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `enable_optics` | `True` | Vignette + grain |
+| `grain` | `0.2` | Photon-weighted noise, stronger in shadows |
+| `vignette` | `0.25` | Natural falloff in linear light — iPhone is well-corrected, keep low |
 
 ---
 
-## 🎨 LUT Color Grading (NEW)
+## 🎨 LUT Nodes
 
-This pack includes two dedicated LUT nodes for applying `.cube` 3D LUTs — plus a bundled **Apple Log to Rec.709** official LUT for precise color conversion.
+Two dedicated nodes for applying `.cube` 3D LUTs with **tetrahedral interpolation** (the industry-standard method used by Resolve and camera ISPs — more accurate than trilinear, especially on the neutral axis).
 
-### Recommended settings.
+### Recommended settings
 
 I recommend setting the strength to around 0.05 to 0.10
-
-### LUT Workflow
 
 ```
 [🎨 LUT Loader] → [🎨 LUT Apply] → [SaveImage]
@@ -187,26 +146,23 @@ I recommend setting the strength to around 0.05 to 0.10
 ```
 
 ### 🎨 LUT Loader
-
 | Parameter | Description |
 |-----------|-------------|
-| `lut_name` | Dropdown of `.cube` files from the bundled `luts/` folder |
-
-**Output:** `LUT_DATA` — connect to LUT Apply
+| `lut_name` | Dropdown of `.cube` files from the `luts/` folder |
 
 ### 🎨 LUT Apply
-
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `image` | — | Your image input |
-| `lut_data` | — | Connect from LUT Loader |
-| `strength` | `0.85` | LUT intensity (0.0 = original, 1.0 = full effect) |
+| `strength` | `0.85` | 0.0 = original, 1.0 = full LUT |
 
-**Output:** `IMAGE`
+### Bundled LUTs
 
-### Adding Custom LUTs
+| File | Type | Correct input |
+|------|------|--------------|
+| `AppleLog2_to_Rec709_33_Grid.cube` | Technical conversion | **Apple Log footage only** — do *not* apply to regular sRGB images |
+| `Presetpro - Portra 800.cube` | Creative film look | Regular sRGB images |
 
-Drop any `.cube` 3D LUT file into the `luts/` folder inside this node pack and restart ComfyUI. It will appear in the LUT Loader dropdown automatically.
+Drop your own `.cube` files into `luts/` and restart ComfyUI.
 
 ---
 
@@ -215,13 +171,10 @@ Drop any `.cube` 3D LUT file into the `luts/` folder inside this node pack and r
 - **ComfyUI** (latest version recommended)
 - **Python 3.10+**
 - **numpy** and **torch** (already included with ComfyUI)
-- Additional dependencies listed in `requirements.txt`
-
----
 
 ## 🤝 Contributing
 
-Pull requests are welcome! If you'd like to add new camera profiles, custom LUTs, or improve the processing pipeline, feel free to open an issue or PR.
+Pull requests are welcome — new Photographic Style tunings, LUTs, or pipeline improvements.
 
 ## 📄 License
 
